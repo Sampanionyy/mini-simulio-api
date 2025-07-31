@@ -7,6 +7,7 @@ use Carbon\Carbon;
 class SimulationService
 {
     public function calculerMensualite(
+        ?int $clientId,
         int $dureeAnnees,
         float $prixBien,
         float $tauxInteret,
@@ -41,6 +42,7 @@ class SimulationService
         $dateFinancement = $dateAcquisition->copy()->addYears($dureeAnnees);
 
         return [
+            'client_id' => $clientId,
             'prix_bien' => $capitalDepart,
             'frais_notaire' => $fraisNotaire,
             'garantie_bancaire' => $garantieBancaire,

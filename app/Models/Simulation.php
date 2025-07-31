@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Simulation extends Model
 {
      protected $fillable = [
+        'client_id',
         'prix_bien',
         'frais_notaire',
         'garantie_bancaire',

@@ -23,6 +23,7 @@ class SimulationController extends Controller
         Log::channel('simulation')->info('Début de la création de simulation', ['request' => $request->all()]);
 
         $data = $request->validate([
+            'client_id' => 'nullable|exists:clients,id',
             'prix_bien' => 'required|numeric',
             'taux_interet' => 'required|numeric',
             'taux_assurance' => 'required|numeric',
@@ -38,6 +39,7 @@ class SimulationController extends Controller
 
         try {
             $simulation = $this->simulationService->calculerMensualite(
+                $data['client_id'],
                 $data['duree_annees'],
                 $data['prix_bien'],
                 $data['taux_interet'],
@@ -66,5 +68,20 @@ class SimulationController extends Controller
 
             return response()->json(['error' => 'Erreur lors de la création de la simulation'], 500);
         }
+    }
+
+    public function getByClientId($clientId)
+    {
+        Log::channel('simulation')->info('Récupération des simulations pour le client', ['client_id' => $clientId]);
+
+        $simulations = Simulation::where('client_id', $clientId)->get();
+
+        if ($simulations->isEmpty()) {
+            return response()->json(['message' => 'Aucune simulation trouvée pour ce client'], 404);
+        }
+
+        Log::channel('simulation')->info('Simulations récupérées avec succès', ['count' => $simulations->count()]);
+
+        return response()->json($simulations, 200);
     }
 }
