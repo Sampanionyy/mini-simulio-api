@@ -138,6 +138,12 @@ return [
             'path' => storage_path('logs/simulation.log'),
             'level' => 'debug',
         ],
+
+        'client' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/client.log'),
+            'level' => 'debug',
+        ],
     ],
 
 ];
