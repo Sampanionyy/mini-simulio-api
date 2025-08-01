@@ -2,66 +2,112 @@
 
 namespace App\Services;
 
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Exception;
 
 class SimulationService
 {
+    protected $pythonServiceUrl;
+
+    public function __construct()
+    {
+        $this->pythonServiceUrl = env('PYTHON_SERVICE_URL', 'http://localhost:5000');
+    }
+
     public function calculerMensualite(
-        ?int $clientId,
-        int $dureeAnnees,
-        float $prixBien,
-        float $tauxInteret,
-        float $tauxAssurance,
-        float $apport,
-        int $mois,
-        int $annee,
-        float $fraisAgencePourcent,
-        float $fraisNotairePourcent,
-        float $travaux,
-        float $revalorisationBien
-    ): array {
-        $capitalDepart = $prixBien;
-        $fraisAgence = ($fraisAgencePourcent / 100) * $prixBien;
-        $fraisNotaire = ($fraisNotairePourcent / 100) * $prixBien;
-        $capital = $prixBien - $apport;
+        $clientId,
+        $dureeAnnees,
+        $prixBien,
+        $tauxInteret,
+        $tauxAssurance,
+        $apport,
+        $moisDebut,
+        $anneeDebut,
+        $fraisAgence,
+        $fraisNotaire,
+        $travaux,
+        $revalorisationBien
+    ) {
+        try {
+            Log::channel('simulation')->info('Appel du service Python pour calcul de mensualité');
 
-        $garantieBancaire = max(0, 0.015 * $capital);
-        $capital += $fraisNotaire + $garantieBancaire + $fraisAgence + $travaux;
+            // Préparer les données pour l'API Python
+            $requestData = [
+                'duree_annees' => $dureeAnnees,
+                'prix_bien' => $prixBien,
+                'taux_interet' => $tauxInteret,
+                'taux_assurance' => $tauxAssurance,
+                'apport' => $apport,
+                'mois_debut' => $moisDebut,
+                'annee_debut' => $anneeDebut,
+                'frais_agence' => $fraisAgence,
+                'frais_notaire' => $fraisNotaire,
+                'travaux' => $travaux,
+                'revalorisation_bien' => $revalorisationBien
+            ];
 
-        $dureeMois = $dureeAnnees * 12;
-        $tauxMensuel = $tauxInteret / 12 / 100;
+            Log::channel('simulation')->info('Données envoyées au service Python', $requestData);
 
-        $mensualite = ($capital * $tauxMensuel) / (1 - pow(1 + $tauxMensuel, -$dureeMois));
-        $mensualite += ($capital * $tauxAssurance / 100) / 12;
+            // Appel HTTP vers le service Python
+            $response = Http::timeout(30)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post($this->pythonServiceUrl . '/api/calculer-mensualite', $requestData);
 
-        $assuranceTotale = $capital * ($tauxAssurance / 100) * $dureeAnnees;
-        $interets = $mensualite * $dureeMois - $capital;
-        $salaireMinimum = (int)(($mensualite * 100) / 35);
+            if (!$response->successful()) {
+                throw new Exception('Erreur du service Python: ' . $response->body());
+            }
 
-        $dateAcquisition = \Carbon\Carbon::createFromDate($annee, $mois, 1);
-        $dateFinancement = $dateAcquisition->copy()->addYears($dureeAnnees);
+            $pythonResult = $response->json();
+            
+            Log::channel('simulation')->info('Réponse reçue du service Python', ['status' => $response->status()]);
 
-        return [
-            'client_id' => $clientId,
-            'prix_bien' => $capitalDepart,
-            'frais_notaire' => $fraisNotaire,
-            'garantie_bancaire' => $garantieBancaire,
-            'frais_agence' => $fraisAgence,
-            'apport' => $apport,
-            'total_financer' => $capital,
-            'taux_interet' => $tauxInteret,
-            'taux_assurance' => $tauxAssurance,
-            'mensualite' => round($mensualite, 2),
-            'assurance_total' => round($assuranceTotale, 2),
-            'interets_total' => round($interets, 2),
-            'salaire_minimum' => $salaireMinimum,
-            'duree_annees' => $dureeAnnees,
-            'mois_debut' => $mois,
-            'annee_debut' => $annee,
-            'date_acquisition' => $dateAcquisition->format('Y-m-d'),
-            'date_financement' => $dateFinancement->format('Y-m-d'),
-            'revalorisation_bien' => $revalorisationBien,
-            'travaux' => $travaux,
-        ];
+            // Transformer la réponse Python au format attendu par Laravel
+            return [
+                'client_id' => $clientId,
+                'duree_annees' => $dureeAnnees,
+                'prix_bien' => $prixBien,
+                'taux_interet' => $tauxInteret,
+                'taux_assurance' => $tauxAssurance,
+                'apport' => $apport,
+                'mois_debut' => $moisDebut,
+                'annee_debut' => $anneeDebut,
+                'travaux' => $travaux,
+                'revalorisation_bien' => $revalorisationBien,
+                
+                // Résultats calculés par Python
+                'mensualite' => $pythonResult['mensualite'],
+                'interets_total' => $pythonResult['interets_total'],
+                'assurance_total' => $pythonResult['assurance_total'],
+                'frais_notaire_calcules' => $pythonResult['frais_notaire'],
+                'garantie_bancaire' => $pythonResult['garantie_bancaire'],
+                'salaire_minimum' => $pythonResult['salaire_minimum'],
+                'frais_agence_calcules' => $pythonResult['frais_agence'],
+                'total_financer' => $pythonResult['total_financer'],
+                'frais_agence' => $pythonResult['frais_agence'],
+                'frais_notaire' => $pythonResult['frais_notaire'],
+                
+                // Données en JSON
+                'tableau_amortissement' => json_encode($pythonResult['tableau_amortissement']),
+                'resume_financement' => json_encode($pythonResult['resume_financement']),
+                'details_pret' => json_encode($pythonResult['details_pret']),
+                'dates_financement' => json_encode($pythonResult['dates_financement']),
+                'evolution_bien' => json_encode($pythonResult['evolution_bien']),
+
+                'date_acquisition' => \Carbon\Carbon::createFromFormat('d/m/Y', $pythonResult['date_acquisition'])->format('Y-m-d'),
+                'date_financement' => \Carbon\Carbon::createFromFormat('d/m/Y', $pythonResult['date_acquisition'])->format('Y-m-d'),
+                
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+        } catch (Exception $e) {
+            Log::channel('simulation')->error('Erreur lors de l\'appel au service Python', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            throw new Exception('Erreur lors du calcul de la simulation: ' . $e->getMessage());
+        }
     }
 }

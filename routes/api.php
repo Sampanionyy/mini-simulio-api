@@ -13,7 +13,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'user']);
     Route::post('/simulations', [SimulationController::class, 'store']);
-    Route::post('/simulations/client/{client}', [SimulationController::class, 'getByClientId']);
+    Route::get('/simulations/client/{client}', [SimulationController::class, 'getByClientId']);
 
     Route::apiResource('clients', ClientController::class);
 });
